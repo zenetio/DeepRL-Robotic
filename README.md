@@ -347,7 +347,7 @@ The table 3 shows the comparison between parameters used in task 1 and task 2.
 | --------------|:-------|:------|:------ |
 | Velocity Control | false |false | position control facilitate the robot arm control
 | LOCKBASE | true | true | DOF = 3 caused gripper to became uninstable
-| EPS_DECAY | 1000 | 10 | Original value worked fine.
+| EPS_DECAY | 1000 | 10 | Original value worked fine only for task 1.
 | INPUT_WIDTH | 64 | 64 | fixed memory issues and execution time was improved.
 | INPUT_HEIGHT | 64 | 64 | fixed memory issues and execution time was improved.
 | BATCH_SIZE | 16 | 32 | improved feature quality
