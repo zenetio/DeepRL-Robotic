@@ -14,6 +14,8 @@ The Gazebo environment train a robotic arm to touch an object without needing ex
 
 This project is based on the Nvidia open source project "jetson-reinforcement" developed by [Dustin Franklin](https://github.com/dusty-nv).
 
+You can see the video of this project [here](https://youtu.be/vxcCQmZHcXA).
+
 ## Hardware
 - Nvidia Jetson TX2
 
