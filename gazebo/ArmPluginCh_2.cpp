@@ -60,13 +60,10 @@
 #define GRIP_NAME  "gripper_middle"
 
 // Define Collision Parameters
-#define COLLISION_FILTER    "ground_plane::link::collision"
-#define COLLISION_ITEM      "tube::tube_link::tube_collision"
-#define COLLISION_POINT     "arm::gripperbase::gripper_link"
-#define COLLISION_POINT_GL  "arm::gripper_left::left_gripper"
-#define COLLISION_POINT_GR  "arm::gripper_right::right_gripper"
-#define COLLISION_POINT_MD  "arm::gripper_middle::middle_collision"
-#define COLLISION_LINK      "arm::link2::collision2"
+#define COLLISION_FILTER "ground_plane::link::collision"
+#define COLLISION_ITEM   "tube::tube_link::tube_collision"
+#define COLLISION_POINT  "arm::gripperbase::gripper_link"
+#define COLLISION_LINK   "arm::link2::collision2"
 
 // Animation Steps
 #define ANIMATION_STEPS 1000
@@ -75,7 +72,7 @@
 #define DEBUG false
 
 // Lock base rotation DOF (Add dof in header file if off)
-#define LOCKBASE true
+#define LOCKBASE false
 
 // Agent actions
 #if LOCKBASE
@@ -102,6 +99,7 @@
 
 float historyWins = 0;
 float last100Acc = 0;
+float countLast100 = 0;
 
 namespace gazebo
 {
@@ -110,7 +108,9 @@ namespace gazebo
 GZ_REGISTER_MODEL_PLUGIN(ArmPlugin)
 
 // constructor
-ArmPlugin::ArmPlugin() : ModelPlugin(), cameraNode(new gazebo::transport::Node()), collisionNode(new gazebo::transport::Node())
+ArmPlugin::ArmPlugin() : ModelPlugin(), camera1Node(new gazebo::transport::Node()), 
+	camera2Node(new gazebo::transport::Node()), 
+	collisionNode(new gazebo::transport::Node())
 {
 	printf("ArmPlugin::ArmPlugin()\n");
 
@@ -149,8 +149,9 @@ ArmPlugin::ArmPlugin() : ModelPlugin(), cameraNode(new gazebo::transport::Node()
 	successfulGrabs = 0;
 	totalRuns       = 0;
     maxVal          = 0.0f;
+	countLast100	= 0;
 	// in initialization
-	std::clog << "SuccessfulGrabs TotalRuns Accuracy LearningRate maxLearningRate LSTMSize Last100Accuracy" << 		std::endl << std::flush;
+	std::clog << "SuccessfulGrabs TotalRuns Accuracy LearningRate maxLearningRate LSTMSize Last100Accuracy AccuracyCam1 AccuracyCam2" << std::endl << std::flush;
 }
 
 /*---------------------------------------------------------------
@@ -167,15 +168,19 @@ void ArmPlugin::Load(physics::ModelPtr _parent, sdf::ElementPtr /*_sdf*/)
 	this->j2_controller = new physics::JointController(model);
 
 	// Create our node for camera communication
-	this->cameraNode->Init();
-	sleep(5);
-	
+	this->camera1Node->Init();
 	// TODO - Subscribe to camera topic
-	this->cameraSub = this->cameraNode->Subscribe("~/camera/link/camera/image", &ArmPlugin::onCameraMsg, this);
+	this->camera1Sub = this->camera1Node->Subscribe("~/camera1/link/camera/image", &ArmPlugin::onCamera1Msg, this);
+
+	currentCamera = 1;	// start with camera 1
+
+	// Create our node for camera communication
+	this->camera2Node->Init();
+	// TODO - Subscribe to camera topic
+	this->camera2Sub = this->camera2Node->Subscribe("~/camera2/link/camera/image", &ArmPlugin::onCamera2Msg, this);
 
 	// Create our node for collision detection
 	this->collisionNode->Init();
-		
 	// TODO - Subscribe to prop collision topic
 	this->collisionSub = this->collisionNode->Subscribe("~/tube/tube_link/my_contact", &ArmPlugin::onCollisionMsg, this);
 
@@ -189,6 +194,9 @@ void ArmPlugin::Load(physics::ModelPtr _parent, sdf::ElementPtr /*_sdf*/)
  */
 bool ArmPlugin::createAgent()
 {
+	// load saved agent
+	//agent->LoadCheckpoint("saved-agent.model");
+
 	if( agent != NULL )
 		return true;
 			
@@ -220,20 +228,74 @@ bool ArmPlugin::createAgent()
 }
 
 /*---------------------------------------------------------------
- * onCameraMsg
+ * onCamera1Msg
  *---------------------------------------------------------------
  */
-void ArmPlugin::onCameraMsg(ConstImageStampedPtr &_msg)
+void ArmPlugin::onCamera1Msg(ConstImageStampedPtr &_msg)
+{
+	if(currentCamera == 2) return;
+	
+	if(!processCameraMsg(_msg)) return;
+
+	if(currentCamera != 1 && currentCamera != 2)
+	{
+		std::cout << "Cannot switch camera: NULL\n";
+		return; 		
+	}
+	/*if(currentCamera == 1)
+	{
+		if(DEBUG){ printf("Switching to camera: 2\n"); } 
+		currentCamera = 2;
+	}*/	
+}
+
+/*---------------------------------------------------------------
+ * onCamera2Msg
+ *---------------------------------------------------------------
+ */
+void ArmPlugin::onCamera2Msg(ConstImageStampedPtr &_msg)
+{
+	if(currentCamera == 1) return;
+	
+	if(!processCameraMsg(_msg)) return;
+
+	if(currentCamera != 1 && currentCamera != 2)
+	{
+		std::cout << "Cannot switch camera: NULL\n";
+		return; 		
+	}
+	
+}
+
+void ArmPlugin::switchCamera()
+{
+	if(currentCamera == 1)
+	{
+		if(DEBUG){ printf("Switching to camera: 2\n"); } 
+		currentCamera = 2;
+	}
+	else if(currentCamera == 2)
+	{
+		if(DEBUG){ printf("Switching to camera: 1\n"); } 
+		currentCamera = 1;
+	}	
+}
+
+/*---------------------------------------------------------------
+ * processCameraMsg
+ *---------------------------------------------------------------
+ */
+bool ArmPlugin::processCameraMsg(ConstImageStampedPtr &_msg)
 {
 	// don't process the image if the agent hasn't been created yet
 	if( !agent )
-		return;
+		return false;
 
 	// check the validity of the message contents
 	if( !_msg )
 	{
 		printf("ArmPlugin - recieved NULL message\n");
-		return;
+		return false;
 	}
 
 	// retrieve image dimensions
@@ -246,7 +308,7 @@ void ArmPlugin::onCameraMsg(ConstImageStampedPtr &_msg)
 	if( bpp != 24 )
 	{
 		printf("ArmPlugin - expected 24BPP uchar3 image from camera, got %i\n", bpp);
-		return;
+		return false;
 	}
 
 	// allocate temp image if necessary
@@ -255,7 +317,7 @@ void ArmPlugin::onCameraMsg(ConstImageStampedPtr &_msg)
 		if( !cudaAllocMapped(&inputBuffer[0], &inputBuffer[1], size) )
 		{
 			printf("ArmPlugin - cudaAllocMapped() failed to allocate %i bytes\n", size);
-			return;
+			return false;
 		}
 
 		printf("ArmPlugin - allocated camera img buffer %ix%i  %i bpp  %i bytes\n", width, height, bpp, size);
@@ -268,7 +330,8 @@ void ArmPlugin::onCameraMsg(ConstImageStampedPtr &_msg)
 	memcpy(inputBuffer[0], _msg->image().data().c_str(), inputBufferSize);
 	newState = true;
 
-	if(DEBUG){printf("camera %i x %i  %i bpp  %i bytes\n", width, height, bpp, size);}
+	if(DEBUG){printf("camera: %i, %i x %i  %i bpp  %i bytes\n", currentCamera, width, height, bpp, size);}
+	return true;
 }
 
 /*---------------------------------------------------------------
@@ -284,9 +347,9 @@ void ArmPlugin::onCollisionMsg(ConstContactsPtr &contacts)
 
 	for (unsigned int i = 0; i < contacts->contact_size(); ++i)
 	{
-		/*printf("1- %s\n", contacts->contact(i).collision1().c_str());
-		printf("2- %s\n", contacts->contact(i).collision2().c_str());
-		for(unsigned int j = 0; j < contacts->contact(i).position_size(); j++)
+		//printf("1- %s\n", contacts->contact(i).collision1().c_str());
+		//printf("2- %s\n", contacts->contact(i).collision2().c_str());
+		/*for(unsigned int j = 0; j < contacts->contact(i).position_size(); j++)
 		{
 			std::cout << "Position: "
             << contacts->contact(i).position(j).x() << " "
@@ -296,7 +359,8 @@ void ArmPlugin::onCollisionMsg(ConstContactsPtr &contacts)
 		if( strcmp(contacts->contact(i).collision2().c_str(), COLLISION_FILTER) == 0 )
 			continue;
 
-		if(DEBUG){std::cout << "Collision between[" << contacts->contact(i).collision1()
+		//if(DEBUG)
+		{std::cout << "Collision between[" << contacts->contact(i).collision1()
 			     << "] and [" << contacts->contact(i).collision2() << "]\n";}
 
 		// TODO - Check if there is collision between the arm and object, then issue learning reward
@@ -312,9 +376,10 @@ void ArmPlugin::onCollisionMsg(ConstContactsPtr &contacts)
 			endEpisode = true;
 			return;
 		}
-		//rewardHistory = REWARD_LOSS;
-		//newReward  = true;
-		//endEpisode = true;
+		rewardHistory = REWARD_LOSS;
+		newReward  = true;
+		endEpisode = true;
+		return;
 	}
 }
 
@@ -484,8 +549,8 @@ bool ArmPlugin::updateJoints()
 		}
 		else if( animationStep == ANIMATION_STEPS / 2 )
 		{	
-			//ResetPropDynamics();
-			RandomizeProps();
+			ResetPropDynamics();	// challenge 2
+			//RandomizeProps();		// normal and challenge 1
 		}
 
 		return true;
@@ -680,7 +745,7 @@ void ArmPlugin::OnUpdate(const common::UpdateInfo& updateInfo)
 
 			if(DEBUG){printf("distance('%s', '%s') = %f\n", gripper->GetName().c_str(), prop->model->GetName().c_str(), distGoal );}
 
-			float alpha = 0.44f;	// .447 increase to accelerate
+			float alpha = 0.41f;	// .447 increase to accelerate
 			
 			if( episodeFrames > 1 )
 			{
@@ -714,23 +779,30 @@ void ArmPlugin::OnUpdate(const common::UpdateInfo& updateInfo)
 			episodeFrames    = 0;
 			lastGoalDistance = 0.0f;
 			avgGoalDelta     = 0.0f;
-			float temp = 0.0f;
-
+			float temp = 0.0f, temp1 = 0.0f, temp2 = 0.0f;
+			static float successCam1, successCam2;
+			
 			// track the number of wins and agent accuracy
 			if( rewardHistory >= REWARD_WIN )
 			{
 				successfulGrabs++;
 				historyWins++;
+				if(currentCamera == 1) successCam1++;
+				else successCam2++;
 			}
 
-			if((totalRuns % 100) == 0) 
+			if(countLast100 >= 100) 
 			{
 				last100Acc = historyWins/100.0;
 				historyWins = 0;
+				countLast100 = 0;
 			}
 
+			countLast100++;
 			totalRuns++;
 			temp = float(successfulGrabs)/float(totalRuns);
+			temp1 = float(successCam1)/float(totalRuns);
+			temp2 = float(successCam2)/float(totalRuns);
 
 			if(temp > maxVal) maxVal = temp;
 			printf("Current Accuracy:  %0.4f (%03u of %03u)  (reward=%+0.2f %s) (max=%+0.2f)\n", float(successfulGrabs)/float(totalRuns), successfulGrabs, totalRuns, rewardHistory, (rewardHistory >= REWARD_WIN ? "WIN" : "LOSS"), maxVal);
@@ -738,13 +810,23 @@ void ArmPlugin::OnUpdate(const common::UpdateInfo& updateInfo)
 			float LearningRate = LEARNING_RATE;
             float maxLearningRate = LEARNING_RATE;
 			int LSTMSize = LSTM_SIZE;			
-	
-			std::clog << successfulGrabs << " " << totalRuns << " " << 
-				(float(successfulGrabs)/float(totalRuns)) << " " <<
+			
+			// SuccessfulGrabs TotalRuns Accuracy LearningRate maxLearningRate LSTMSize Last100Accuracy" << 	
+			std::clog << successfulGrabs << " " << totalRuns << " " << (float(successfulGrabs)/float(totalRuns)) << " " <<
 				LearningRate << " " << maxLearningRate << " " << 
-				LSTMSize << " " << last100Acc << std::endl << std::flush;
+				LSTMSize << " " << last100Acc << " " << temp1 << " " << temp2 << std::endl << std::flush;
 			for( uint32_t n=0; n < DOF; n++ )
 				vel[n] = 0.0f;
+			// save checkpoint for each 500 episodes
+			if((totalRuns % 10) == 0)
+			{
+				char name[500];
+				sprintf(name,"agent-saved-%i.model", totalRuns);
+				agent->SaveCheckpoint(name);
+			}
+			// switch camera
+			switchCamera();
+			
 		}
 	}
 }

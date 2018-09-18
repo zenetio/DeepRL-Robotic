@@ -20,7 +20,7 @@ include_directories(${GAZEBO_INCLUDE_DIRS} gazebo-pkgs/gazebo_grasp_plugin/inclu
 link_directories(${GAZEBO_LIBRARY_DIRS})
 #link_directories(${GAZEBO_LIBRARY_DIRS} gazebo-pkgs/gazebo_grasp_plugin/include)
 
-add_library(gazeboArmPlugin SHARED ArmPluginCh_1.cpp)
+add_library(gazeboArmPlugin SHARED ArmPluginCh_2.cpp)
 add_library(gazeboPropPlugin SHARED PropPlugin.cpp)
 add_library(gazeboGraspPlugin SHARED gazebo-pkgs/gazebo_grasp_plugin/src/GazeboGraspFix.cpp gazebo-pkgs/gazebo_grasp_plugin/src/GazeboGraspGripper.cpp)
 

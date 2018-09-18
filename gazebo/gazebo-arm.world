@@ -389,7 +389,7 @@
 	<!--        -->
 	<!-- CAMERA -->
 	<!--        -->
-	<model name="camera">
+	<model name="camera1">
 		<link name="link">
 		<gravity>false</gravity>
 		<!--<pose>-1.0 -3.0 0.85 0 0 1.0</pose>-->
@@ -430,15 +430,56 @@
 		</link>
 	</model>
 
-	
+	<model name="camera2">
+		<link name="link">
+		<gravity>false</gravity>
+		<!--<pose>-1.0 -3.0 0.85 0 0 1.0</pose>-->
+		<!--<pose>0.75 -3.0 0.85 0 0 1.5</pose>-->
+		<pose>0.0 0.0 3.5 0 1.57079632679 0</pose>
+        <!--pose>0.5 -3.0 0.85 0 0 1.57</pose-->
+		<inertial>
+			<mass>0.1</mass>
+		</inertial>
+		<visual name="visual">
+			<geometry>
+				<box>
+					<size>0.1 0.1 0.1</size>
+				</box>
+			</geometry>
+		</visual>
+		<sensor name="camera" type="camera">
+			<camera>
+				<horizontal_fov>1.047</horizontal_fov>
+				<image>
+					<width>64</width>
+					<height>64</height>
+				</image>
+				<clip>
+					<near>0.1</near>
+					<far>100</far>
+				</clip>
+				<!--<noise>
+					<type>gaussian</type>
+					<mean>0.0</mean>
+					<stddev>0.007</stddev>
+				</noise>-->
+			</camera>
+			<always_on>1</always_on>
+			<update_rate>10</update_rate>
+			<visualize>true</visualize>
+		</sensor>
+		</link>
+	</model>
+
 
 	<!--               -->
 	<!-- TUBE/COLLISION -->
 	<!--               -->
 	<model name="tube">
 		<link name="tube_link">
-		<pose>1.15 0 0 0 0 0</pose>
-		
+		<!--pose>1.15 0 0 0 0 0</pose -->
+		<pose>0.75 0.75 0 0 0 0</pose>
+
 		<collision name="tube_collision">
 			<geometry>
 			     <cylinder>

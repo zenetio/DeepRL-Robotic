@@ -53,8 +53,12 @@ public:
 	bool updateAgent();
 	bool updateJoints();
 
-	void onCameraMsg(ConstImageStampedPtr &_msg);
+	void onCamera1Msg(ConstImageStampedPtr &_msg);
+	void onCamera2Msg(ConstImageStampedPtr &_msg);
+	bool processCameraMsg(ConstImageStampedPtr &_msg);
 	void onCollisionMsg(ConstContactsPtr &contacts);
+	void switchCamera();
+
 #if LOCKBASE
 	static const uint32_t DOF  = 2;	// active degrees of freedom in the arm
 #else
@@ -93,13 +97,17 @@ private:
 	int	 	 runHistoryMax;
 	bool     runHistory[20];
 	float 	 maxVal;
+	int 	 currentCamera;
+	int 	 countLast100;
 
 	physics::ModelPtr model;
 	event::ConnectionPtr updateConnection;
 	physics::JointController* j2_controller;
 
-	gazebo::transport::NodePtr cameraNode;
-	gazebo::transport::SubscriberPtr cameraSub;
+	gazebo::transport::NodePtr camera1Node;
+	gazebo::transport::SubscriberPtr camera1Sub;
+	gazebo::transport::NodePtr camera2Node;
+	gazebo::transport::SubscriberPtr camera2Sub;
 
 	gazebo::transport::NodePtr collisionNode;
 	gazebo::transport::SubscriberPtr collisionSub;
